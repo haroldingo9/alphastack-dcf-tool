@@ -10,41 +10,34 @@ st.set_page_config(page_title="AlphaStack | Valuation Tool", layout="wide")
 st.title("📊 AlphaStack: DCF & Valuation Generator")
 st.markdown("Auto-valuation using just a stock ticker — or add your assumptions.")
 
+# --- Scenario Selector ---
+scenario = st.sidebar.selectbox("📈 Choose Scenario", ["Base", "Bull", "Bear"])
+
+# --- Scenario-Based Default Assumptions ---
+defaults = {
+    "Base": {"revenue_growth": 10.0, "ebit_margin": 20.0, "discount_rate": 10.0},
+    "Bull": {"revenue_growth": 15.0, "ebit_margin": 23.0, "discount_rate": 8.5},
+    "Bear": {"revenue_growth": 6.0, "ebit_margin": 17.0, "discount_rate": 11.5}
+}
+d = defaults[scenario]
+
 # --- Ticker Input ---
 ticker = st.text_input("Enter Stock Ticker (e.g., INFY.NS)", value="TCS.NS")
 
-# --- Scenario Analysis ---
-st.sidebar.header("📊 Scenario Analysis")
-scenario = st.sidebar.selectbox("Choose Scenario", ["Base", "Bull", "Bear"])
-
-# Scenario-based auto assumptions
-if scenario == "Bull":
-    revenue_growth = 14.0
-    ebit_margin = 22.0
-    discount_rate = 9.0
-elif scenario == "Bear":
-    revenue_growth = 6.0
-    ebit_margin = 17.0
-    discount_rate = 11.0
-else:
-    revenue_growth = 10.0
-    ebit_margin = 20.0
-    discount_rate = 10.0
-
-# --- Custom Inputs ---
-st.header("🔧 Custom Assumptions (Optional Override)")
+# --- Input Section ---
+st.header("🔧 Custom Assumptions (You can override scenario defaults)")
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.info(f"📈 Revenue Growth: {revenue_growth}%")
+    revenue_growth = st.number_input("Revenue Growth Rate (% per year)", value=d["revenue_growth"])
     tax_rate = st.number_input("Tax Rate (% of EBIT)", value=25.0)
 with col2:
-    st.info(f"💼 EBIT Margin: {ebit_margin}%")
-    st.info(f"📉 Discount Rate (WACC): {discount_rate}%")
+    ebit_margin = st.number_input("EBIT Margin (%)", value=d["ebit_margin"])
+    discount_rate = st.number_input("WACC / Discount Rate (%)", value=d["discount_rate"])
 with col3:
     terminal_growth = st.number_input("Terminal Growth Rate (%)", value=3.0)
     forecast_years = st.slider("Forecast Period (Years)", 3, 10, 5)
 
-# --- Upload Optional File for CapEx / Dep / WC ---
+# --- Upload Optional Excel for CapEx / Dep / WC ---
 st.subheader("📂 Upload Optional File for CapEx/Depreciation/WC")
 uploaded_file = st.file_uploader("Upload CSV or Excel (optional)", type=["csv", "xlsx"])
 
@@ -66,19 +59,18 @@ with st.expander("📘 View Upload Instructions & Sample"):
     st.dataframe(sample_df)
     st.download_button("📥 Download Sample Template", data=sample_df.to_csv(index=False), file_name="sample_template.csv")
 
-# --- Main Logic ---
+# --- Process Button ---
 if st.button("🚀 Generate Valuation"):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
 
-        # Company Overview
         st.subheader(f"🏢 Company Profile: {info.get('shortName', 'N/A')}")
         st.write(f"Sector: {info.get('sector', 'N/A')} | Industry: {info.get('industry', 'N/A')}")
         st.write(f"Market Cap: ₹{info.get('marketCap', 0):,}")
         st.write(f"PE Ratio: {info.get('trailingPE', 'N/A')}, Beta: {info.get('beta', 'N/A')}, Dividend Yield: {info.get('dividendYield', 0) * 100:.2f}%")
 
-        # Financials
+        # Financials from Yahoo
         revenue = info.get("totalRevenue", 1000)
         net_income = info.get("netIncome", 200)
         cash = info.get("totalCash", 200)
@@ -86,7 +78,7 @@ if st.button("🚀 Generate Valuation"):
         shares = info.get("sharesOutstanding", 50)
         ebit = revenue * (ebit_margin / 100)
 
-        # CapEx / Dep / WC
+        # Load uploaded CapEx / Depreciation / WC
         if uploaded_file:
             if uploaded_file.name.endswith("csv"):
                 fin_df = pd.read_csv(uploaded_file)
@@ -131,20 +123,7 @@ if st.button("🚀 Generate Valuation"):
         st.success(f"Equity Value: ₹{round(equity_val, 2):,}")
         st.success(f"Intrinsic Value per Share: ₹{round(intrinsic_val, 2):,.2f}")
 
-        # --- Smart Verdict ---
-        market_price = info.get("currentPrice", 0)
-        diff = intrinsic_val - market_price
-        percent_diff = (diff / market_price) * 100 if market_price else 0
-
-        st.markdown("### 🧠 Smart Valuation Verdict")
-        if percent_diff > 10:
-            st.success(f"🎯 This stock appears **undervalued** by {percent_diff:.1f}%.")
-        elif percent_diff < -10:
-            st.error(f"⚠️ This stock appears **overvalued** by {abs(percent_diff):.1f}%.")
-        else:
-            st.info("📊 This stock seems **fairly valued** based on your assumptions.")
-
-        # --- Chart ---
+        # --- Price Chart ---
         st.markdown("### 📉 1Y Stock Price Chart")
         hist = stock.history(period="1y")
         fig, ax = plt.subplots()
@@ -152,5 +131,5 @@ if st.button("🚀 Generate Valuation"):
         st.pyplot(fig)
 
     except Exception as e:
-        st.error(f"❌ Something went wrong: {e}")
+        st.error(f"Something went wrong: {e}")
 
