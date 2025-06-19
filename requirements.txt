@@ -1,6 +1,15 @@
 streamlit
 pandas
-numpy
-openpyxl
 yfinance
 matplotlib
+numpy
+plotly
+openpyxl
+requests
+beautifulsoup4
+lxml
+pdfkit
+xhtml2pdf
+weasyprint
+jinja2
+scikit-learn
