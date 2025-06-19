@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 
 # --- Page Config ---
 st.set_page_config(page_title="AlphaStack | Valuation Tool", layout="wide")
@@ -10,7 +11,6 @@ st.markdown("Generate high-quality company valuations using your assumptions —
 
 # --- Input Section ---
 st.header("🔧 Input Assumptions")
-
 ticker = st.text_input("Enter Stock Ticker (e.g., TCS.NS)", value="TCS.NS")
 
 col1, col2, col3 = st.columns(3)
@@ -26,79 +26,77 @@ with col3:
     terminal_growth = st.number_input("Terminal Growth Rate (%)", value=3.0)
     forecast_years = st.slider("Forecast Period (Years)", 3, 10, 5)
 
-# --- File Upload ---
-uploaded_file = st.file_uploader("Or upload your own financials (CSV or Excel)", type=["csv", "xlsx"])
+uploaded_file = st.file_uploader("Optional: Upload additional financials (CapEx, Depreciation, WC)", type=["csv", "xlsx"])
 
-# --- Instructions + Sample Table ---
-with st.expander("📘 View Upload Instructions & Sample"):
+# --- Instructions ---
+with st.expander("📘 Upload Format Instructions"):
     st.markdown("""
-    Your file should contain historical financials in the following format:
+    Only upload if you want to provide **Capital Expenditure, Depreciation, and Working Capital** manually.
 
-    | Year | Revenue | EBIT | Net Income | Capital Expenditure | Depreciation | Change in Working Capital | Cash | Debt | Shares Outstanding |
-    |------|---------|------|------------|----------------------|--------------|----------------------------|------|------|---------------------|
-    | 2021 | 500     | 100  | 80         | 20                   | 10           | -5                         | 200  | 100  | 50                  |
-    | 2022 | 550     | 110  | 85         | 25                   | 12           | -4                         | 220  | 90   | 50                  |
-
-    - **Units**: ₹ Crores (or your preferred currency)  
-    - Include at least 2 years of historical data  
-    - Column headers must match exactly
+    | Year | Capital Expenditure | Depreciation | Change in Working Capital |
+    |------|---------------------|--------------|----------------------------|
+    | 2022 | 100                 | 40           | -10                        |
+    | 2023 | 120                 | 42           | -5                         |
     """)
 
-    sample_data = pd.DataFrame({
-        "Year": [2021, 2022],
-        "Revenue": [500, 550],
-        "EBIT": [100, 110],
-        "Net Income": [80, 85],
-        "Capital Expenditure": [20, 25],
-        "Depreciation": [10, 12],
-        "Change in Working Capital": [-5, -4],
-        "Cash": [200, 220],
-        "Debt": [100, 90],
-        "Shares Outstanding": [50, 50]
-    })
-    st.dataframe(sample_data)
-
-    sample_csv = sample_data.to_csv(index=False)
-    st.download_button("📥 Download Sample Template", data=sample_csv, file_name="valuation_template.csv", mime="text/csv")
-
-# --- Submit Button ---
+# --- Submit ---
 generate = st.button("🚀 Generate Valuation")
 
-# --- Logic ---
 if generate:
     st.subheader("📈 Valuation Results")
+    use_uploaded = False
 
+    # 1. Fetch from yfinance
+    try:
+        stock = yf.Ticker(ticker)
+        fin = stock.financials
+        bs = stock.balance_sheet
+        shares = stock.info.get("sharesOutstanding", 0)
+
+        # Take most recent year available
+        latest_year = fin.columns[0]
+        revenue = fin.loc["Total Revenue"][latest_year]
+        ebit = fin.loc["Ebit"][latest_year]
+        net_income = fin.loc["Net Income"][latest_year]
+        cash = bs.loc["Cash"][latest_year]
+        debt = bs.loc["Total Debt"][latest_year]
+
+        st.success(f"Fetched Data for {ticker}:")
+        st.write(f"Revenue: ₹{round(revenue/1e7, 2)} Cr")
+        st.write(f"EBIT: ₹{round(ebit/1e7, 2)} Cr")
+        st.write(f"Net Income: ₹{round(net_income/1e7, 2)} Cr")
+        st.write(f"Cash: ₹{round(cash/1e7, 2)} Cr")
+        st.write(f"Debt: ₹{round(debt/1e7, 2)} Cr")
+        st.write(f"Shares Outstanding: {int(shares/1e6)} Million")
+
+        revenue /= 1e7
+        ebit /= 1e7
+        net_income /= 1e7
+        cash /= 1e7
+        debt /= 1e7
+        shares_outstanding = shares / 1e6
+
+    except:
+        st.error("❌ Could not fetch data. Please check the ticker or try again.")
+        st.stop()
+
+    # 2. Use uploaded CapEx, Dep, WC if available
     if uploaded_file:
-        if uploaded_file.name.endswith("csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-
-        st.markdown("✅ Uploaded Financials:")
-        st.dataframe(df)
-
-        last_row = df.iloc[-1]
-        revenue = last_row["Revenue"]
-        ebit = last_row["EBIT"]
-        capex = last_row["Capital Expenditure"]
-        dep = last_row["Depreciation"]
-        wc_change = last_row["Change in Working Capital"]
-        cash = last_row["Cash"]
-        debt = last_row["Debt"]
-        shares_outstanding = last_row["Shares Outstanding"]
+        try:
+            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith("csv") else pd.read_excel(uploaded_file)
+            latest_row = df.iloc[-1]
+            capex = latest_row["Capital Expenditure"]
+            dep = latest_row["Depreciation"]
+            wc_change = latest_row["Change in Working Capital"]
+            st.info("Used uploaded CapEx, Depreciation, and WC values.")
+        except:
+            st.warning("Upload format invalid. Using default estimates.")
+            capex, dep, wc_change = 100, 50, -10
     else:
-        st.warning("No file uploaded. Using default sample values.")
-        revenue = 1000
-        ebit = revenue * (ebit_margin / 100)
-        capex = 100
-        dep = 50
-        wc_change = -20
-        cash = 200
-        debt = 100
-        shares_outstanding = 50
+        capex, dep, wc_change = 100, 50, -10
+        st.warning("No upload provided. Using default CapEx/Dep/WC values.")
 
     # --- DCF Calculation ---
-    ebit = revenue * (ebit_margin / 100)
     tax = ebit * (tax_rate / 100)
     nopat = ebit - tax
     fcf = nopat + dep - capex - wc_change
@@ -113,6 +111,7 @@ if generate:
     st.markdown("### 🔢 Forecasted Free Cash Flows")
     st.dataframe(df_cf)
 
+    # Terminal value
     last_fcf = cash_flows[-1][1]
     terminal_value = (last_fcf * (1 + terminal_growth / 100)) / ((discount_rate / 100) - (terminal_growth / 100))
     discounted_terminal = terminal_value / ((1 + discount_rate / 100) ** forecast_years)
@@ -121,13 +120,14 @@ if generate:
     st.write(f"Terminal Value: ₹{round(terminal_value, 2)}")
     st.write(f"Discounted Terminal Value: ₹{round(discounted_terminal, 2)}")
 
-    total_enterprise_value = discounted_terminal + sum([val[2] for val in cash_flows])
+    # Enterprise and Equity
+    total_enterprise_value = discounted_terminal + sum([cf[2] for cf in cash_flows])
     equity_value = total_enterprise_value + cash - debt
-    intrinsic_value_per_share = equity_value / shares_outstanding
+    intrinsic_value = equity_value / shares_outstanding
 
     st.markdown("### 💰 Valuation Summary")
-    st.success(f"**Enterprise Value:** ₹{round(total_enterprise_value, 2)}")
-    st.success(f"**Equity Value:** ₹{round(equity_value, 2)}")
-    st.success(f"**Intrinsic Value per Share:** ₹{round(intrinsic_value_per_share, 2)}")
+    st.success(f"Enterprise Value: ₹{round(total_enterprise_value, 2)} Cr")
+    st.success(f"Equity Value: ₹{round(equity_value, 2)} Cr")
+    st.success(f"Intrinsic Value per Share: ₹{round(intrinsic_value, 2)}")
 
-    st.caption("All values are estimates based on assumptions or uploaded.")
+    st.caption("All values are estimates based on public data and user assumptions.")
