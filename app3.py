@@ -3,49 +3,44 @@ import pandas as pd
 import yfinance as yf
 import matplotlib.pyplot as plt
 
-# --- Page Config ---
-st.set_page_config(page_title="AlphaStack | Valuation Tool", layout="wide")
+# --- Page Configuration ---
+st.set_page_config(page_title="AlphaStack | DCF Tool", layout="wide")
 
+# --- Title ---
 st.title("📊 AlphaStack: DCF & Valuation Generator")
 st.markdown("Auto-valuation using just a stock ticker — or add your assumptions.")
 
-# --- Sidebar ---
+# --- Sidebar for Scenario Selection ---
 st.sidebar.header("⚙️ Scenario Settings")
-scenario = st.sidebar.selectbox("Choose Scenario", ["Base Case", "Bull Case", "Bear Case"])
-stress_event = st.sidebar.selectbox("Stress Test Event", ["None", "COVID-19 (2020)", "2008 Financial Crisis", "Great Depression", "Scam 1992"])
-
-# Scenario Defaults
-scenarios = {
-    "Base Case": {"revenue_growth": 10, "ebit_margin": 20, "discount_rate": 10},
-    "Bull Case": {"revenue_growth": 15, "ebit_margin": 25, "discount_rate": 9},
-    "Bear Case": {"revenue_growth": 5, "ebit_margin": 15, "discount_rate": 12},
-}
-defaults = scenarios[scenario]
+scenario = st.sidebar.selectbox("Choose Scenario", ["Base Case", "Stress Test Event"])
+stress_event = st.sidebar.selectbox("Choose Stress Test Event", [
+    "None", "COVID-19 (2020)", "2008 Financial Crisis", "Great Depression", "Scam 1992"
+]) if scenario == "Stress Test Event" else "None"
 
 # --- Ticker Input ---
 ticker = st.text_input("Enter Stock Ticker (e.g., INFY.NS)", value="TCS.NS")
 
-# --- Input Section ---
+# --- Custom Assumptions ---
 st.header("🔧 Custom Assumptions (Optional)")
 col1, col2, col3 = st.columns(3)
 with col1:
-    revenue_growth = st.number_input("Revenue Growth Rate (% per year)", value=defaults["revenue_growth"])
+    revenue_growth = st.number_input("Revenue Growth Rate (% per year)", value=10.0)
     tax_rate = st.number_input("Tax Rate (% of EBIT)", value=25.0)
 with col2:
-    ebit_margin = st.number_input("EBIT Margin (%)", value=defaults["ebit_margin"])
-    discount_rate = st.number_input("WACC / Discount Rate (%)", value=defaults["discount_rate"])
+    ebit_margin = st.number_input("EBIT Margin (%)", value=20.0)
+    discount_rate = st.number_input("WACC / Discount Rate (%)", value=10.0)
 with col3:
     terminal_growth = st.number_input("Terminal Growth Rate (%)", value=3.0)
     forecast_years = st.slider("Forecast Period (Years)", 3, 10, 5)
 
-# --- Upload Optional Excel for CapEx / Dep / WC ---
+# --- Upload File for CapEx/Depreciation/WC ---
 st.subheader("📂 Upload Optional File for CapEx/Depreciation/WC")
 uploaded_file = st.file_uploader("Upload CSV or Excel (optional)", type=["csv", "xlsx"])
 
-# --- Instructions & Sample ---
+# --- Upload Instructions ---
 with st.expander("📘 View Upload Instructions & Sample"):
     st.markdown("""
-    Upload only these 3 fields (we auto-fetch the rest):
+    Upload a file with these columns:
 
     | Year | Capital Expenditure | Depreciation | Change in Working Capital |
     |------|---------------------|--------------|----------------------------|
@@ -57,9 +52,10 @@ with st.expander("📘 View Upload Instructions & Sample"):
         "Depreciation": [10, 12],
         "Change in Working Capital": [-5, -4],
     })
+    st.dataframe(sample_df)
     st.download_button("📥 Download Sample Template", data=sample_df.to_csv(index=False), file_name="sample_template.csv")
 
-# --- Generate Button ---
+# --- Generate Valuation ---
 if st.button("🚀 Generate Valuation"):
     try:
         stock = yf.Ticker(ticker)
@@ -70,7 +66,7 @@ if st.button("🚀 Generate Valuation"):
         st.write(f"Market Cap: ₹{info.get('marketCap', 0):,}")
         st.write(f"PE Ratio: {info.get('trailingPE', 'N/A')}, Beta: {info.get('beta', 'N/A')}, Dividend Yield: {info.get('dividendYield', 0) * 100:.2f}%")
 
-        # Financials
+        # --- Financial Inputs ---
         revenue = info.get("totalRevenue", 1000)
         net_income = info.get("netIncome", 200)
         cash = info.get("totalCash", 200)
@@ -78,7 +74,7 @@ if st.button("🚀 Generate Valuation"):
         shares = info.get("sharesOutstanding", 50)
         ebit = revenue * (ebit_margin / 100)
 
-        # Optional upload
+        # --- Load uploaded CapEx etc ---
         if uploaded_file:
             if uploaded_file.name.endswith("csv"):
                 fin_df = pd.read_csv(uploaded_file)
@@ -88,9 +84,11 @@ if st.button("🚀 Generate Valuation"):
             dep = fin_df.iloc[-1]["Depreciation"]
             wc = fin_df.iloc[-1]["Change in Working Capital"]
         else:
-            capex, dep, wc = 100, 50, -20
+            capex = 100
+            dep = 50
+            wc = -20
 
-        # DCF Calculations
+        # --- DCF Calculation ---
         tax = ebit * (tax_rate / 100)
         nopat = ebit - tax
         fcf = nopat + dep - capex - wc
@@ -105,8 +103,12 @@ if st.button("🚀 Generate Valuation"):
         st.markdown("### 🔢 Forecasted Free Cash Flows")
         st.dataframe(df_cf)
 
-        terminal_val = (cash_flows[-1][1] * (1 + terminal_growth / 100)) / ((discount_rate / 100) - (terminal_growth / 100))
+        # Terminal value
+        last_fcf = cash_flows[-1][1]
+        terminal_val = (last_fcf * (1 + terminal_growth / 100)) / ((discount_rate / 100) - (terminal_growth / 100))
         disc_terminal = terminal_val / ((1 + discount_rate / 100) ** forecast_years)
+
+        # Final valuation
         total_ev = sum(df_cf["Discounted FCF"]) + disc_terminal
         equity_val = total_ev + cash - debt
         intrinsic_val = equity_val / shares
@@ -116,34 +118,35 @@ if st.button("🚀 Generate Valuation"):
         st.success(f"Equity Value: ₹{round(equity_val, 2):,}")
         st.success(f"Intrinsic Value per Share: ₹{round(intrinsic_val, 2):,.2f}")
 
-        hist = stock.history(period="1y")
+        # Price Chart
         st.markdown("### 📉 1Y Stock Price Chart")
+        hist = stock.history(period="1y")
         fig, ax = plt.subplots()
         hist["Close"].plot(ax=ax, title=f"{ticker} Price Trend")
         st.pyplot(fig)
 
         # --- Stress Test ---
-       # --- Stress Test ---
-if stress_event != "None":
-    stress_events = {
-        "COVID-19 (2020)": ("2020-02-15", "2020-03-23"),
-        "2008 Financial Crisis": ("2008-09-01", "2008-10-15"),
-        "Great Depression": ("1929-09-01", "1930-06-01"),
-        "Scam 1992": ("1992-04-01", "1992-05-15"),
-    }
-    start, end = stress_events[stress_event]
-    crisis_df = yf.download(ticker, start=start, end=end)
-    if not crisis_df.empty:
-        pct_drop = ((crisis_df["Close"].iloc[-1] - crisis_df["Close"].iloc[0]) / crisis_df["Close"].iloc[0]) * 100
-        
-        # ✅ FIX HERE
-        today_price = hist["Close"].iloc[-1]  # Use iloc to get the last float value
-        simulated_price = today_price * (1 + pct_drop / 100)
+        if stress_event != "None":
+            stress_events = {
+                "COVID-19 (2020)": ("2020-02-15", "2020-03-23"),
+                "2008 Financial Crisis": ("2008-09-01", "2008-10-15"),
+                "Great Depression": ("1929-09-01", "1930-06-01"),
+                "Scam 1992": ("1992-04-01", "1992-05-15"),
+            }
+            start, end = stress_events[stress_event]
+            crisis_df = yf.download(ticker, start=start, end=end)
+            if not crisis_df.empty:
+                pct_drop = ((crisis_df["Close"].iloc[-1] - crisis_df["Close"].iloc[0]) / crisis_df["Close"].iloc[0]) * 100
+                today_price = hist["Close"].iloc[-1]
+                simulated_price = today_price * (1 + pct_drop / 100)
 
-        st.markdown("### 🧨 Stress Test Simulation")
-        st.warning(f"During **{stress_event}**, this stock fell **{pct_drop:.2f}%**.")
-        st.info(f"If it repeats today, estimated price: ₹{simulated_price:.2f} (from ₹{today_price:.2f})")
-    else:
-        st.error("No data available for this event.")
+                st.markdown("### 🧨 Stress Test Simulation")
+                st.warning(f"During **{stress_event}**, this stock fell **{pct_drop:.2f}%**.")
+                st.info(f"If repeated today, price might fall to: ₹{simulated_price:.2f} from ₹{today_price:.2f}")
+            else:
+                st.error("No data available for this event.")
+
+    except Exception as e:
+        st.error(f"Something went wrong: {e}")
 
 
