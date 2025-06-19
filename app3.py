@@ -2,11 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-from datetime import datetime
 
-# --- Page Configuration ---
+# --- Page Setup ---
 st.set_page_config(page_title="AlphaStack | Valuation Tool", layout="wide")
 st.title("📊 AlphaStack: Multi‑Model Valuation Generator")
 st.markdown("Choose your valuation model or upload your own numbers.")
@@ -32,11 +30,11 @@ with col3:
     discount_rate = st.slider("Discount Rate (WACC %)", 0.0, 30.0, 10.0)
     forecast_years = st.slider("Forecast Period (Years)", 1, 10, 5)
 
-# --- Upload Optional Financials ---
+# --- Upload Financials ---
 st.subheader("📂 Upload Your Financials (Optional override)")
-uploaded_file = st.file_uploader("CSV/Excel with columns: Year, Revenue, EBIT, Net Income, CapEx, Depreciation, ΔWC, Cash, Debt, Shares", type=["csv", "xlsx"])
+uploaded_file = st.file_uploader("CSV or Excel file", type=["csv", "xlsx"])
 
-# Sample download
+# --- Sample Template ---
 with st.expander("📘 Sample Upload Template"):
     sample_data = pd.DataFrame({
         "Year": [2023],
@@ -63,7 +61,7 @@ if st.button("🚀 Generate Valuation"):
         st.write(f"Sector: {info.get('sector', 'N/A')} | Industry: {info.get('industry', 'N/A')}")
         st.write(f"Market Cap: ₹{info.get('marketCap', 0):,.0f} | PE: {info.get('trailingPE', 'N/A')} | Div Yield: {info.get('dividendYield', 0) * 100:.2f}%")
 
-        # Use uploaded financials or defaults
+        # --- Use Uploaded Data or yfinance ---
         if uploaded_file:
             df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith("csv") else pd.read_excel(uploaded_file)
             last = df.iloc[-1]
@@ -85,6 +83,7 @@ if st.button("🚀 Generate Valuation"):
             debt = info.get("totalDebt", 50)
             shares = info.get("sharesOutstanding", 10)
 
+        # --- DCF Calculation ---
         tax = ebit * (tax_rate / 100)
         nopat = ebit - tax
         fcf = nopat + dep - capex - wc
@@ -93,16 +92,17 @@ if st.button("🚀 Generate Valuation"):
         for year in range(1, forecast_years + 1):
             fcf_proj = fcf * ((1 + revenue_growth / 100) ** year)
             fcf_disc = fcf_proj / ((1 + discount_rate / 100) ** year)
-            cashflows.append((year, fcf_proj, fcf_disc))
+            cashflows.append((year, round(fcf_proj, 2), round(fcf_disc, 2)))
 
         df_cf = pd.DataFrame(cashflows, columns=["Year", "Projected FCF", "Discounted FCF"])
         st.subheader("🔢 DCF Cash Flows")
         st.dataframe(df_cf)
 
-        # Terminal Value
-        terminal_fcf = cashflows[-1][1]
-        terminal_val = (terminal_fcf * (1 + terminal_growth / 100)) / ((discount_rate / 100) - (terminal_growth / 100))
+        # --- Terminal Value ---
+        last_fcf = df_cf["Projected FCF"].iloc[-1]
+        terminal_val = (last_fcf * (1 + terminal_growth / 100)) / ((discount_rate / 100) - (terminal_growth / 100))
         disc_terminal = terminal_val / ((1 + discount_rate / 100) ** forecast_years)
+
         total_ev = df_cf["Discounted FCF"].sum() + disc_terminal
         equity_val = total_ev + cash - debt
         intrinsic_val = equity_val / shares
@@ -111,25 +111,28 @@ if st.button("🚀 Generate Valuation"):
         st.success(f"Equity Value: ₹{equity_val:,.2f}")
         st.success(f"Intrinsic Value per Share: ₹{intrinsic_val:,.2f}")
 
-        # AI Insight
+        # --- AI Insight ---
         current_price = stock.history(period="1d")["Close"].iloc[-1]
         diff_pct = ((intrinsic_val - current_price) / current_price) * 100
         direction = "undervalued" if diff_pct > 0 else "overvalued"
         st.markdown(f"🧠 Insight: **{direction.capitalize()}** by {abs(diff_pct):.1f}% (market ₹{current_price:.2f} vs IV ₹{intrinsic_val:.2f})")
 
-        # Stress Test
+        # --- Stress Test ---
         if stress_event != "None":
-            events = {
+            event_dates = {
                 "COVID-19 (2020)": ("2020-02-01", "2020-04-01"),
                 "2008 Financial Crisis": ("2008-09-01", "2008-11-01")
             }
-            start, end = events[stress_event]
+            start, end = event_dates[stress_event]
             crisis_data = yf.download(ticker, start=start, end=end)
+
             if not crisis_data.empty:
                 pct_drop = ((crisis_data["Close"].iloc[-1] - crisis_data["Close"].iloc[0]) / crisis_data["Close"].iloc[0]) * 100
                 st.markdown(f"🧨 Stress Test: During **{stress_event}**, this stock fell **{pct_drop:.2f}%**.")
+            else:
+                st.warning("No data available for the selected stress event.")
 
-        # Chart
+        # --- Price Chart (1Y) ---
         st.subheader("📈 Stock Chart (1Y)")
         hist = stock.history(period="1y")
         fig = go.Figure()
