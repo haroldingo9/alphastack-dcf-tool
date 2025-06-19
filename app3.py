@@ -125,28 +125,30 @@ if st.button("🚀 Generate Valuation"):
         hist["Close"].plot(ax=ax, title=f"{ticker} Price Trend")
         st.pyplot(fig)
 
-        # --- Stress Test ---
-        if stress_event != "None":
-            stress_events = {
-                "COVID-19 (2020)": ("2020-02-15", "2020-03-23"),
-                "2008 Financial Crisis": ("2008-09-01", "2008-10-15"),
-                "Great Depression": ("1929-09-01", "1930-06-01"),
-                "Scam 1992": ("1992-04-01", "1992-05-15"),
-            }
-            start, end = stress_events[stress_event]
-            crisis_df = yf.download(ticker, start=start, end=end)
-            if not crisis_df.empty:
-                pct_drop = ((crisis_df["Close"].iloc[-1] - crisis_df["Close"].iloc[0]) / crisis_df["Close"].iloc[0]) * 100
-                today_price = hist["Close"].iloc[-1]
-                simulated_price = today_price * (1 + pct_drop / 100)
+       # --- Stress Test ---
+if stress_event != "None":
+    stress_events = {
+        "COVID-19 (2020)": ("2020-02-15", "2020-03-23"),
+        "2008 Financial Crisis": ("2008-09-01", "2008-10-15"),
+        "Great Depression": ("1929-09-01", "1930-06-01"),
+        "Scam 1992": ("1992-04-01", "1992-05-15"),
+    }
+    start, end = stress_events[stress_event]
+    crisis_df = yf.download(ticker, start=start, end=end)
+    
+    if not crisis_df.empty:
+        start_price = float(crisis_df["Close"].iloc[0])
+        end_price = float(crisis_df["Close"].iloc[-1])
+        pct_drop = ((end_price - start_price) / start_price) * 100
 
-                st.markdown("### 🧨 Stress Test Simulation")
-                st.warning(f"During **{stress_event}**, this stock fell **{pct_drop:.2f}%**.")
-                st.info(f"If repeated today, price might fall to: ₹{simulated_price:.2f} from ₹{today_price:.2f}")
-            else:
-                st.error("No data available for this event.")
+        today_price = float(hist["Close"].iloc[-1])
+        simulated_price = today_price * (1 + pct_drop / 100)
 
-    except Exception as e:
-        st.error(f"Something went wrong: {e}")
+        st.markdown("### 🧨 Stress Test Simulation")
+        st.warning(f"During **{stress_event}**, this stock fell **{pct_drop:.2f}%**.")
+        st.info(f"If repeated today, price might fall to: ₹{simulated_price:.2f} from ₹{today_price:.2f}")
+    else:
+        st.error("No data available for this event.")
+
 
 
