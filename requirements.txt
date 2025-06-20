@@ -2,12 +2,11 @@ streamlit
 pandas
 yfinance
 numpy
-matplotlib
 plotly
-openpyxl
-scikit-learn
 requests
 beautifulsoup4
 lxml
-jinja2
-pandas-ta
+ta
+openpyxl
+scikit-learn
+matplotlib
