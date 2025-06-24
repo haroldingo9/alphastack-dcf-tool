@@ -28,19 +28,6 @@ with col2:
 with col3:
     discount_rate = st.slider("WACC %", 0.0, 30.0, 10.0)
     forecast_years = st.slider("Forecast Years", 1, 10, 5)
-# --- DCF Assumptions Sliders ---
-st.subheader("🔧 DCF Assumptions")
-col1, col2, col3 = st.columns(3)
-with col1:
-    revenue_growth = st.slider("Revenue Growth %", 0.0, 30.0, 10.0)
-    terminal_growth = st.slider("Terminal Growth %", 0.0, 10.0, 3.0)
-with col2:
-    ebit_margin = st.slider("EBIT Margin %", 0.0, 50.0, 20.0)
-    tax_rate = st.slider("Tax Rate %", 0.0, 50.0, 25.0)
-with col3:
-    discount_rate = st.slider("WACC %", 0.0, 30.0, 10.0)
-    forecast_years = st.slider("Forecast Years", 1, 10, 5)
-
 # ✅ Add Explanation Table Here
 with st.expander("📘 What Do These Inputs Mean?"):
     explain_df = pd.DataFrame({
