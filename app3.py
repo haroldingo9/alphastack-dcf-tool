@@ -28,6 +28,50 @@ with col2:
 with col3:
     discount_rate = st.slider("WACC %", 0.0, 30.0, 10.0)
     forecast_years = st.slider("Forecast Years", 1, 10, 5)
+# --- DCF Assumptions Sliders ---
+st.subheader("🔧 DCF Assumptions")
+col1, col2, col3 = st.columns(3)
+with col1:
+    revenue_growth = st.slider("Revenue Growth %", 0.0, 30.0, 10.0)
+    terminal_growth = st.slider("Terminal Growth %", 0.0, 10.0, 3.0)
+with col2:
+    ebit_margin = st.slider("EBIT Margin %", 0.0, 50.0, 20.0)
+    tax_rate = st.slider("Tax Rate %", 0.0, 50.0, 25.0)
+with col3:
+    discount_rate = st.slider("WACC %", 0.0, 30.0, 10.0)
+    forecast_years = st.slider("Forecast Years", 1, 10, 5)
+
+# ✅ Add Explanation Table Here
+with st.expander("📘 What Do These Inputs Mean?"):
+    explain_df = pd.DataFrame({
+        "Parameter": [
+            "Revenue Growth %",
+            "Terminal Growth %",
+            "EBIT Margin %",
+            "Tax Rate %",
+            "WACC %",
+            "Forecast Years"
+        ],
+        "Meaning": [
+            "Expected annual revenue growth during forecast period.",
+            "Growth rate after the forecast period (used to calculate terminal value).",
+            "Percentage of revenue that remains as EBIT (profitability).",
+            "Percentage of EBIT paid as tax to calculate NOPAT.",
+            "Discount rate (cost of capital) used to discount future cash flows.",
+            "Number of years into the future for which cash flows are projected."
+        ],
+        "Impact on Valuation": [
+            "Higher growth increases future cash flows and valuation.",
+            "Slight changes greatly affect terminal value and valuation.",
+            "Higher margins mean more profit and higher cash flows.",
+            "Higher taxes reduce free cash flows, lowering valuation.",
+            "Higher WACC decreases present value of future cash flows.",
+            "Longer forecasts show more growth but add more uncertainty."
+        ]
+    })
+
+    st.dataframe(explain_df, use_container_width=True)
+
 
 # --- File Upload ---
 st.subheader("📂 Optional Financials Upload")
