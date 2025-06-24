@@ -3,12 +3,6 @@ yfinance
 pandas
 numpy
 plotly
-matplotlib
-openpyxl
-requests
-beautifulsoup4
-lxml
-scikit-learn
-jinja2
 pandas-ta
-TA-Lib
+openpyxl
+
