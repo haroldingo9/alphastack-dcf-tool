@@ -3,19 +3,15 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
-import pandas_ta as ta
-from io import BytesIO
 
 # --- Page Config ---
 st.set_page_config(page_title="AlphaStack: Valuation + Technical Insights", layout="wide")
-
 st.title("📊 AlphaStack: Valuation + Technical Insights")
 st.markdown("Get DCF valuation, peer comparison, technical patterns, and stress test simulation — all in one place.")
 
 # --- Sidebar ---
 st.sidebar.header("⚙️ Settings")
 stress_event = st.sidebar.selectbox("Stress Test Event", ["None", "COVID-19 (2020)", "2008 Financial Crisis", "Scam 1992", "Dotcom Bubble"])
-valuation_model = st.sidebar.selectbox("Valuation Model", ["DCF"])
 
 # --- Ticker Input ---
 ticker = st.text_input("Ticker (e.g., TCS.NS)", value="TCS.NS")
@@ -54,7 +50,7 @@ with st.expander("📘 Sample Upload Template"):
     csv = sample_df.to_csv(index=False).encode()
     st.download_button("📥 Download Sample Template", csv, "sample_template.csv")
 
-# --- Generate Button ---
+# --- Main Action ---
 if st.button("🚀 Generate Valuation"):
     try:
         stock = yf.Ticker(ticker)
@@ -67,7 +63,7 @@ if st.button("🚀 Generate Valuation"):
         div_yield = info.get("dividendYield", 0.0) * 100
 
         st.markdown(f"### 🏢 {name} | {industry}")
-        st.write(f"Market Cap: ₹{market_cap:,} | PE: {pe_ratio} | Div Yield: {div_yield:.2f}%")
+        st.write(f"Market Cap: ₹{market_cap / 1e12:.2f}T | PE: {pe_ratio} | Div Yield: {div_yield:.2f}%")
 
         # --- Load Data ---
         if uploaded_file:
@@ -113,8 +109,8 @@ if st.button("🚀 Generate Valuation"):
         intrinsic_val = equity_val / shares
 
         st.subheader("💰 Valuation Summary")
-        st.metric("Enterprise Value", f"₹{ev:,.2f}")
-        st.metric("Equity Value", f"₹{equity_val:,.2f}")
+        st.metric("Enterprise Value", f"₹{ev / 1e12:.2f}T")
+        st.metric("Equity Value", f"₹{equity_val / 1e12:.2f}T")
         st.metric("Intrinsic Value/share", f"₹{intrinsic_val:,.2f}")
 
         price = stock.history(period="1d")["Close"].iloc[-1]
@@ -125,7 +121,6 @@ if st.button("🚀 Generate Valuation"):
         else:
             st.warning(f"🧠 Insight: Stock appears **overvalued** by {abs(pct):.1f}% (Mkt ₹{price:.2f} vs IV ₹{intrinsic_val:.2f})")
 
-        # --- Stress Test ---
         if stress_event != "None":
             st.subheader("🧨 Stress Test Results")
             crisis_periods = {
@@ -137,9 +132,10 @@ if st.button("🚀 Generate Valuation"):
             start, end = crisis_periods[stress_event]
             data = yf.download(ticker, start=start, end=end)
             if not data.empty:
-                drop_pct = ((data["Close"].iloc[-1] - data["Close"].iloc[0]) / data["Close"].iloc[0]) * 100
-                fall_val = price * (1 + drop_pct / 100)
-                st.error(f"If {stress_event} repeats, estimated price fall: {drop_pct:.2f}%, new price: ₹{fall_val:.2f}")
+                drop_pct = float(((data["Close"].iloc[-1] - data["Close"].iloc[0]) / data["Close"].iloc[0]) * 100)
+                fall_val = float(price * (1 + drop_pct / 100))
+                st.error(
+                    f"If {stress_event} repeats, estimated price fall: {drop_pct:.2f}%, new price: ₹{fall_val:.2f}")
 
         # --- Chart ---
         st.subheader("📈 Price Chart + Technical Pattern (30D)")
@@ -148,21 +144,31 @@ if st.button("🚀 Generate Valuation"):
                                              low=hist['Low'], close=hist['Close'])])
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- Technical Pattern Detection ---
+        # --- Technical Summary ---
         st.subheader("🧠 Technical Pattern: Summary")
-        candles = {
-            "Doji": ta.cdl_doji(hist['Open'], hist['High'], hist['Low'], hist['Close']),
-            "Hammer": ta.cdl_hammer(hist['Open'], hist['High'], hist['Low'], hist['Close']),
-            "Engulfing": ta.cdl_engulfing(hist['Open'], hist['High'], hist['Low'], hist['Close']),
+        def detect_doji(df):
+            return abs(df['Close'] - df['Open']) < (df['High'] - df['Low']) * 0.1
+
+        def detect_hammer(df):
+            body = abs(df['Close'] - df['Open'])
+            lower = df['Open'] - df['Low']
+            upper = df['High'] - df['Close']
+            return (lower > 2 * body) & (upper < body)
+
+        hist = hist.dropna()
+        patterns = {
+            "Doji": detect_doji(hist),
+            "Hammer": detect_hammer(hist),
         }
-        for name, series in candles.items():
-            count = int((series != 0).sum())
-            st.write(f"🔹 {name} appeared **{count}** times")
+
+        for pattern, condition in patterns.items():
+            count = int(condition.sum())
+            st.write(f"🔹 {pattern} appeared **{count}** times")
 
         st.caption("📘 All results are for educational purposes only. No investment advice.")
 
     except Exception as e:
-        st.error(f"Something went wrong: {e}")
+        st.error(f"❌ Something went wrong: {e}")
 
 
 
